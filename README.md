@@ -103,7 +103,7 @@ Explora os crimes rotulados e os modos de operacao identificados no corpus. Esta
 
 ### Clusters
 
-Agrupa noticias semanticamente parecidas. Aqui o painel mostra o tamanho de cada cluster, termos dominantes, crimes mais frequentes, linha do tempo, mapa por estados citados e uma rede 3D de proximidade entre clusters. Esta secao ajuda a enxergar blocos tematicos do acervo, em vez de olhar noticia por noticia.
+Agrupa noticias semanticamente parecidas. Aqui o painel mostra o tamanho de cada cluster, termos dominantes, crimes mais frequentes, linha do tempo, mapa por estados citados e uma rede 3D de proximidade entre clusters. Nessa rede, a similaridade entre um cluster e outro e calculada a partir do corpus textual agregado de cada cluster, ou seja, pela uniao dos textos das noticias que pertencem a ele. Quando um cluster aparece solto, isso nao significa erro automaticamente: indica apenas que, no limiar atual da rede, o corpus agregado dele nao encontrou conexoes fortes o suficiente com os demais clusters. Esta secao ajuda a enxergar blocos tematicos do acervo, em vez de olhar noticia por noticia.
 
 ### Series Recorrentes
 

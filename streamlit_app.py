@@ -63,14 +63,6 @@ STATE_POINTS = {
     "TO": {"state": "Tocantins", "lat": -10.1840, "lon": -48.3336},
 }
 
-CLUSTER_GRAPH_TAG_BLACKLIST = {
-    "operacao pf",
-    "policia federal",
-    "destaque",
-    "pf",
-    "noticia",
-    "noticias",
-}
 
 CLUSTER_GRAPH_COLORS = [
     "#1d5c63",
@@ -89,6 +81,7 @@ CLUSTER_GRAPH_COLORS = [
 
 
 def data_signature() -> tuple[tuple[str, int, int], ...]:
+    """Build a cache signature from the required artifact files."""
     signature: list[tuple[str, int, int]] = []
     for path in REQUIRED_DATA_FILES:
         stat = path.stat()
@@ -97,6 +90,7 @@ def data_signature() -> tuple[tuple[str, int, int], ...]:
 
 
 def missing_required_data_paths() -> list[Path]:
+    """Return the generated artifacts that are still missing on disk."""
     return [path for path in REQUIRED_DATA_FILES if not path.exists()]
 
 
@@ -109,6 +103,7 @@ st.set_page_config(
 
 
 def inject_styles() -> None:
+    """Inject the custom CSS theme used by the Streamlit dashboard."""
     st.markdown(
         """
         <style>
@@ -189,6 +184,7 @@ inject_styles()
 
 
 def render_missing_data_state(missing_paths: list[Path]) -> None:
+    """Render onboarding instructions when the generated data files are absent."""
     st.markdown(
         """
         <div class="hero">
@@ -238,6 +234,7 @@ if MISSING_DATA_PATHS:
 
 
 def parse_list_cell(value: object) -> list[str]:
+    """Parse list-like CSV cells stored as Python lists or pipe-delimited strings."""
     if pd.isna(value):
         return []
     if isinstance(value, list):
@@ -255,6 +252,7 @@ def parse_list_cell(value: object) -> list[str]:
 
 
 def fold_text(value: str) -> str:
+    """Normalize text to lowercase ASCII for matching and fuzzy search."""
     import unicodedata
 
     normalized = unicodedata.normalize("NFKD", str(value))
@@ -262,6 +260,7 @@ def fold_text(value: str) -> str:
 
 
 def build_series_ui_label(series_row: pd.Series) -> str:
+    """Assemble the selector label shown for one semantic series."""
     group_key = str(series_row.get("series_group_key", "") or "")
     base_label = str(series_row.get("series_label", "") or "")
     crime_modes = str(series_row.get("crime_modes", "") or "").strip()
@@ -281,6 +280,7 @@ def build_series_ui_label(series_row: pd.Series) -> str:
 
 @st.cache_data(show_spinner=False)
 def load_data(_signature: tuple[tuple[str, int, int], ...]) -> dict[str, pd.DataFrame | str]:
+    """Load all dashboard artifacts and derive helper columns used across views."""
     corpus = pd.read_csv(ANALYSIS_DIR / "corpus_enriquecido.csv", parse_dates=["data_publicacao_dt"])
     clusters = pd.read_csv(ANALYSIS_DIR / "resumo_clusters.csv", parse_dates=["first_date", "last_date"])
     temporal = pd.read_csv(ANALYSIS_DIR / "recorrencia_temporal.csv")
@@ -356,19 +356,23 @@ REPORT = DATA["report"]
 
 
 def pretty_label(value: str) -> str:
+    """Convert underscored identifiers into a more readable label."""
     return value.replace("_", " ").title()
 
 
 def available_states() -> list[str]:
+    """List the state names available in the current corpus."""
     states = sorted({STATE_POINTS[uf]["state"] for uf in STATE_POINTS})
     return ["Todos"] + states
 
 
 def available_ufs() -> list[str]:
+    """List the UF codes available in the current corpus."""
     return ["Todos"] + sorted(STATE_POINTS.keys())
 
 
 def filter_corpus_by_state(df: pd.DataFrame, selected_state: str) -> pd.DataFrame:
+    """Filter the corpus by one mentioned state name."""
     if selected_state == "Todos":
         return df
     uf = next((code for code, meta in STATE_POINTS.items() if meta["state"] == selected_state), None)
@@ -378,12 +382,14 @@ def filter_corpus_by_state(df: pd.DataFrame, selected_state: str) -> pd.DataFram
 
 
 def filter_corpus_by_uf(df: pd.DataFrame, selected_uf: str) -> pd.DataFrame:
+    """Filter the corpus by one mentioned UF code."""
     if selected_uf == "Todos":
         return df
     return df[df["ufs_mencionadas_list"].map(lambda items: selected_uf in items)]
 
 
 def aggregate_states_from_corpus(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate mentioned states into counts and map coordinates."""
     exploded = (
         df[["ufs_mencionadas_list"]]
         .explode("ufs_mencionadas_list")
@@ -404,6 +410,7 @@ def aggregate_states_from_corpus(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def aggregate_states_for_dual_map(df_a: pd.DataFrame, df_b: pd.DataFrame) -> pd.DataFrame:
+    """Align two state summaries for side-by-side map comparison."""
     map_a = aggregate_states_from_corpus(df_a)[["uf", "state", "lat", "lon", "noticias"]].rename(columns={"noticias": "noticias_a"})
     map_b = aggregate_states_from_corpus(df_b)[["uf", "state", "lat", "lon", "noticias"]].rename(columns={"noticias": "noticias_b"})
     merged = map_a.merge(map_b, on=["uf", "state", "lat", "lon"], how="outer").fillna(0)
@@ -419,6 +426,7 @@ def aggregate_states_for_dual_map(df_a: pd.DataFrame, df_b: pd.DataFrame) -> pd.
 
 
 def color_scale(value: float) -> list[int]:
+    """Map a normalized value to the default RGBA color scale."""
     start = (220, 210, 181)
     end = (24, 88, 98)
     ratio = min(max(float(value), 0.0), 1.0)
@@ -426,6 +434,7 @@ def color_scale(value: float) -> list[int]:
 
 
 def crime_color_scale(value: float) -> list[int]:
+    """Map crime intensity values to the choropleth RGBA scale."""
     start = (255, 237, 213)
     end = (153, 27, 27)
     ratio = min(max(float(value), 0.0), 1.0)
@@ -433,6 +442,7 @@ def crime_color_scale(value: float) -> list[int]:
 
 
 def summarize_labels_from_corpus(df: pd.DataFrame, source_col: str, output_col: str) -> pd.DataFrame:
+    """Explode label lists and aggregate them by year."""
     rows = []
     for _, row in df.iterrows():
         for label in row[source_col]:
@@ -450,6 +460,7 @@ def summarize_labels_from_corpus(df: pd.DataFrame, source_col: str, output_col: 
 
 
 def crime_state_year_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """Summarize crime mentions by year and state."""
     rows = []
     for _, row in df.iterrows():
         if not row["crime_labels_list"] or not row["ufs_mencionadas_list"]:
@@ -478,6 +489,7 @@ def crime_state_year_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 @st.cache_resource(show_spinner=False)
 def build_text_search_index(texts: tuple[str, ...]) -> tuple[TfidfVectorizer, object]:
+    """Build the character n-gram index used by fuzzy text search."""
     vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), min_df=1)
     matrix = vectorizer.fit_transform(texts)
     return vectorizer, matrix
@@ -485,6 +497,7 @@ def build_text_search_index(texts: tuple[str, ...]) -> tuple[TfidfVectorizer, ob
 
 @st.cache_data(show_spinner=False)
 def get_catalog_values(mode: str) -> list[str]:
+    """Return the unique catalog values for tags, crimes, or modus."""
     if mode == "Tag":
         values = sorted({tag for tags in CORPUS["tags_list"] for tag in tags if tag})
     elif mode == "Crime":
@@ -498,6 +511,7 @@ def get_catalog_values(mode: str) -> list[str]:
 
 @st.cache_resource(show_spinner=False)
 def build_catalog_index(values: tuple[str, ...]) -> tuple[list[str], TfidfVectorizer, object]:
+    """Build a fuzzy-search index for a controlled catalog of values."""
     normalized = [fold_text(value) for value in values]
     vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 5), min_df=1)
     matrix = vectorizer.fit_transform(normalized) if normalized else None
@@ -505,6 +519,7 @@ def build_catalog_index(values: tuple[str, ...]) -> tuple[list[str], TfidfVector
 
 
 def resolve_catalog_term(mode: str, value: str) -> tuple[str, float]:
+    """Resolve free text to the closest known catalog value."""
     query = fold_text(value).strip()
     if not query:
         return "", 0.0
@@ -524,6 +539,7 @@ TEXT_VECTORIZER, TEXT_MATRIX = build_text_search_index(tuple(CORPUS["texto_busca
 
 
 def fuzzy_text_mask(df: pd.DataFrame, value: str) -> tuple[pd.Series, str, float]:
+    """Find corpus rows matching a free-text query with exact and fuzzy search."""
     query = fold_text(value).strip()
     if not query:
         return pd.Series(False, index=df.index), value, 0.0
@@ -546,6 +562,7 @@ def fuzzy_text_mask(df: pd.DataFrame, value: str) -> tuple[pd.Series, str, float
 
 
 def match_signal(df: pd.DataFrame, mode: str, value: str) -> tuple[pd.Series, str, float]:
+    """Resolve one signal query and return its mask, resolved label, and score."""
     query = fold_text(value).strip()
     if not query:
         return pd.Series(False, index=df.index), value, 0.0
@@ -569,6 +586,7 @@ def match_signal(df: pd.DataFrame, mode: str, value: str) -> tuple[pd.Series, st
 
 
 def build_signal_trend(df: pd.DataFrame, terms: list[str], period: str, mode: str) -> pd.DataFrame:
+    """Compute relative signal frequency over time for the selected mode."""
     base_col = "year" if period == "Ano" else "month"
     denominator = df.groupby(base_col).size().rename("total_periodo")
     rows = []
@@ -592,6 +610,7 @@ def build_signal_trend(df: pd.DataFrame, terms: list[str], period: str, mode: st
 
 
 def state_map(df: pd.DataFrame, title: str) -> None:
+    """Render the bubble map of states mentioned in the current selection."""
     if df.empty:
         st.info("Nenhum estado identificado para este recorte.")
         return
@@ -621,6 +640,7 @@ def state_map(df: pd.DataFrame, title: str) -> None:
 
 
 def dual_state_map(df: pd.DataFrame, label_a: str, label_b: str) -> None:
+    """Render the comparison map for two selected signals."""
     if df.empty:
         st.info("Nenhum estado identificado para este confronto.")
         return
@@ -662,10 +682,12 @@ def dual_state_map(df: pd.DataFrame, label_a: str, label_b: str) -> None:
 
 @st.cache_data(show_spinner=False)
 def load_states_geojson() -> dict:
+    """Load the static Brazil states GeoJSON reference file."""
     return json.loads(BRAZIL_STATES_GEOJSON.read_text(encoding="utf-8"))
 
 
 def crime_map_geojson(summary_df: pd.DataFrame, crime_label: str, selected_year: str) -> tuple[dict, pd.DataFrame]:
+    """Prepare the choropleth GeoJSON and summary table for one crime."""
     geojson = load_states_geojson()
     subset = summary_df[summary_df["crime_label"] == crime_label].copy()
     if selected_year != "Todos":
@@ -696,6 +718,7 @@ def crime_map_geojson(summary_df: pd.DataFrame, crime_label: str, selected_year:
 
 
 def crime_choropleth(geojson: dict, title: str) -> None:
+    """Render the choropleth that shows crime intensity by state."""
     layer = pdk.Layer(
         "GeoJsonLayer",
         data=geojson,
@@ -721,6 +744,7 @@ def crime_choropleth(geojson: dict, title: str) -> None:
 
 
 def crime_state_trend_chart(summary_df: pd.DataFrame, crime_label: str) -> alt.Chart:
+    """Build the time-series chart for crime mentions by state."""
     subset = summary_df[summary_df["crime_label"] == crime_label].copy()
     top_ufs = (
         subset.groupby("uf", as_index=False)["noticias"]
@@ -745,6 +769,7 @@ def crime_state_trend_chart(summary_df: pd.DataFrame, crime_label: str) -> alt.C
 
 
 def artifact_inventory() -> pd.DataFrame:
+    """Describe the generated artifacts shown in the inventory section."""
     rows = [
         {
             "artefato": "corpus_enriquecido.csv",
@@ -793,6 +818,7 @@ def artifact_inventory() -> pd.DataFrame:
 
 
 def monthly_volume_chart(df: pd.DataFrame) -> alt.Chart:
+    """Build the monthly publication volume chart."""
     monthly = df.groupby("month").size().reset_index(name="noticias")
     monthly["month_dt"] = pd.to_datetime(monthly["month"])
     return (
@@ -812,6 +838,7 @@ def monthly_volume_chart(df: pd.DataFrame) -> alt.Chart:
 
 
 def top_crime_chart(df: pd.DataFrame) -> alt.Chart:
+    """Build the ranking chart for the most frequent crimes."""
     crime_totals = (
         df.groupby("crime_label", as_index=False)["noticias"]
         .sum()
@@ -832,6 +859,7 @@ def top_crime_chart(df: pd.DataFrame) -> alt.Chart:
 
 
 def cluster_size_chart(df: pd.DataFrame) -> alt.Chart:
+    """Build the ranking chart for the largest clusters."""
     top_clusters = df.head(12).copy()
     top_clusters["cluster_name"] = top_clusters["cluster_id"].map(lambda x: f"Cluster {x}")
     return (
@@ -847,6 +875,7 @@ def cluster_size_chart(df: pd.DataFrame) -> alt.Chart:
 
 
 def label_heatmap(df: pd.DataFrame, label_col: str, title: str) -> alt.Chart:
+    """Build the yearly heatmap for crime or modus labels."""
     if df.empty:
         return alt.Chart(pd.DataFrame({label_col: [], "ano": [], "noticias": []})).mark_rect()
     top_labels = (
@@ -873,6 +902,7 @@ def label_heatmap(df: pd.DataFrame, label_col: str, title: str) -> alt.Chart:
 
 
 def cluster_timeline_chart(corpus: pd.DataFrame, cluster_id: int) -> alt.Chart:
+    """Build the publication timeline for one selected cluster."""
     subset = corpus[corpus["cluster_id"] == cluster_id]
     monthly = subset.groupby("month").size().reset_index(name="noticias")
     monthly["month_dt"] = pd.to_datetime(monthly["month"])
@@ -888,64 +918,74 @@ def cluster_timeline_chart(corpus: pd.DataFrame, cluster_id: int) -> alt.Chart:
     )
 
 
-def build_cluster_tag_network(
+def build_cluster_text_network(
     corpus: pd.DataFrame,
     clusters: pd.DataFrame,
     neighbors_per_cluster: int = 3,
-    min_similarity: float = 0.08,
+    min_similarity: float = 0.12,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    tag_rows: list[dict[str, object]] = []
-    for row in corpus[["cluster_id", "tags_list"]].itertuples(index=False):
-        for tag in row.tags_list:
-            tag_text = str(tag).strip()
-            if not tag_text:
-                continue
-            if fold_text(tag_text) in CLUSTER_GRAPH_TAG_BLACKLIST:
-                continue
-            tag_rows.append({"cluster_id": int(row.cluster_id), "tag": tag_text})
-
-    if not tag_rows:
-        return pd.DataFrame(), pd.DataFrame()
-
-    tags_df = pd.DataFrame(tag_rows)
-    tag_matrix = (
-        tags_df.groupby(["cluster_id", "tag"])
-        .size()
-        .unstack(fill_value=0)
+    """Build the cluster network from aggregated cluster corpora."""
+    edge_columns = [
+        "source_cluster",
+        "target_cluster",
+        "source_x",
+        "source_y",
+        "source_z",
+        "target_x",
+        "target_y",
+        "target_z",
+        "similarity",
+        "shared_count",
+        "shared_terms",
+    ]
+    cluster_texts = (
+        corpus.groupby("cluster_id")["texto_busca_normalizado"]
+        .apply(lambda values: " ".join(str(value).strip() for value in values if str(value).strip()))
         .sort_index()
     )
-    tag_presence = (tag_matrix > 0).sum(axis=0)
-    max_cluster_share = max(2, int(tag_matrix.shape[0] * 0.65))
-    informative_tags = tag_presence[(tag_presence >= 2) & (tag_presence <= max_cluster_share)].index.tolist()
-    if informative_tags:
-        tag_matrix = tag_matrix[informative_tags]
+    cluster_texts = cluster_texts[cluster_texts.astype(str).str.strip().ne("")]
+    if cluster_texts.empty:
+        return pd.DataFrame(), pd.DataFrame(columns=edge_columns)
 
-    if tag_matrix.empty or tag_matrix.shape[1] == 0:
-        return pd.DataFrame(), pd.DataFrame()
+    vectorizer = TfidfVectorizer(
+        lowercase=False,
+        ngram_range=(1, 2),
+        min_df=2,
+        max_df=0.75,
+        max_features=12000,
+        token_pattern=r"(?u)\b[a-z0-9-]{2,}\b",
+    )
+    term_matrix = vectorizer.fit_transform(cluster_texts.tolist())
+    if term_matrix.shape[1] == 0:
+        return pd.DataFrame(), pd.DataFrame(columns=edge_columns)
 
-    matrix_values = np.log1p(tag_matrix.values.astype(float))
-    similarity = cosine_similarity(matrix_values)
-
-    if tag_matrix.shape[1] >= 3:
-        reducer = TruncatedSVD(n_components=3, random_state=42)
-        coords = reducer.fit_transform(matrix_values)
-    elif tag_matrix.shape[1] == 2:
-        coords = np.column_stack([matrix_values[:, 0], matrix_values[:, 1], np.zeros(tag_matrix.shape[0])])
+    similarity = cosine_similarity(term_matrix)
+    max_components = min(term_matrix.shape[0], term_matrix.shape[1]) - 1
+    if max_components >= 1:
+        reducer = TruncatedSVD(n_components=min(3, max_components), random_state=42)
+        reduced = reducer.fit_transform(term_matrix)
     else:
-        coords = np.column_stack([matrix_values[:, 0], np.zeros(tag_matrix.shape[0]), np.zeros(tag_matrix.shape[0])])
+        reduced = np.zeros((term_matrix.shape[0], 1))
+    if reduced.shape[1] < 3:
+        reduced = np.column_stack([reduced, np.zeros((reduced.shape[0], 3 - reduced.shape[1]))])
 
-    coords = coords.astype(float)
+    coords = reduced[:, :3].astype(float)
     for axis in range(3):
         axis_values = coords[:, axis]
         spread = float(np.max(np.abs(axis_values))) if axis_values.size else 0.0
         if spread > 0:
             coords[:, axis] = axis_values / spread
 
+    terms = np.asarray(vectorizer.get_feature_names_out())
     cluster_meta = clusters.set_index("cluster_id")
+    dense_matrix = term_matrix.toarray()
+    cluster_ids = cluster_texts.index.tolist()
     nodes = []
-    for idx, cluster_id in enumerate(tag_matrix.index.tolist()):
+    for idx, cluster_id in enumerate(cluster_ids):
         meta = cluster_meta.loc[int(cluster_id)]
-        dominant_tags = [tag for tag in str(meta.get("top_tags", "")).split(" | ") if tag][:6]
+        weights = dense_matrix[idx]
+        top_term_idx = weights.argsort()[::-1]
+        dominant_terms = [terms[pos] for pos in top_term_idx if weights[pos] > 0][:6]
         nodes.append(
             {
                 "cluster_id": int(cluster_id),
@@ -957,45 +997,41 @@ def build_cluster_tag_network(
                 "top_terms": str(meta.get("top_terms", "")),
                 "top_tags": str(meta.get("top_tags", "")),
                 "top_crimes": str(meta.get("top_crimes", "")),
-                "dominant_tags": " | ".join(dominant_tags),
+                "dominant_terms": " | ".join(dominant_terms),
                 "color": CLUSTER_GRAPH_COLORS[idx % len(CLUSTER_GRAPH_COLORS)],
             }
         )
     nodes_df = pd.DataFrame(nodes).sort_values("cluster_id").reset_index(drop=True)
 
+    node_lookup = nodes_df.set_index("cluster_id")
     edges = []
     seen_pairs: set[tuple[int, int]] = set()
-    cluster_ids = tag_matrix.index.tolist()
-    tag_columns = tag_matrix.columns.tolist()
     for i, source_cluster in enumerate(cluster_ids):
         candidate_pairs = []
+        source_weights = dense_matrix[i]
+        source_nonzero = source_weights > 0
         for j, target_cluster in enumerate(cluster_ids):
             if i == j:
                 continue
             score = float(similarity[i, j])
             if score < min_similarity:
                 continue
-            shared_tags = [
-                tag for tag in tag_columns
-                if tag_matrix.loc[source_cluster, tag] > 0 and tag_matrix.loc[target_cluster, tag] > 0
-            ]
-            if not shared_tags:
+            target_weights = dense_matrix[j]
+            overlap_mask = source_nonzero & (target_weights > 0)
+            if not overlap_mask.any():
                 continue
-            shared_tags = sorted(
-                shared_tags,
-                key=lambda tag: min(tag_matrix.loc[source_cluster, tag], tag_matrix.loc[target_cluster, tag]),
-                reverse=True,
-            )
-            candidate_pairs.append((target_cluster, score, shared_tags))
+            overlap_strength = np.minimum(source_weights[overlap_mask], target_weights[overlap_mask])
+            shared_terms = terms[overlap_mask][np.argsort(overlap_strength)[::-1]].tolist()
+            candidate_pairs.append((target_cluster, score, shared_terms))
 
         candidate_pairs.sort(key=lambda item: item[1], reverse=True)
-        for target_cluster, score, shared_tags in candidate_pairs[:neighbors_per_cluster]:
+        for target_cluster, score, shared_terms in candidate_pairs[:neighbors_per_cluster]:
             pair_key = tuple(sorted((int(source_cluster), int(target_cluster))))
             if pair_key in seen_pairs:
                 continue
             seen_pairs.add(pair_key)
-            source_row = nodes_df[nodes_df["cluster_id"] == int(source_cluster)].iloc[0]
-            target_row = nodes_df[nodes_df["cluster_id"] == int(target_cluster)].iloc[0]
+            source_row = node_lookup.loc[int(source_cluster)]
+            target_row = node_lookup.loc[int(target_cluster)]
             edges.append(
                 {
                     "source_cluster": int(source_cluster),
@@ -1007,16 +1043,30 @@ def build_cluster_tag_network(
                     "target_y": float(target_row["y"]),
                     "target_z": float(target_row["z"]),
                     "similarity": round(score, 4),
-                    "shared_count": len(shared_tags),
-                    "shared_tags": " | ".join(shared_tags[:6]),
+                    "shared_count": len(shared_terms),
+                    "shared_terms": " | ".join(shared_terms[:6]),
                 }
             )
 
-    edges_df = pd.DataFrame(edges).sort_values(["similarity", "shared_count"], ascending=[False, False]).reset_index(drop=True)
+    edges_df = pd.DataFrame(edges, columns=edge_columns)
+    if edges_df.empty:
+        return nodes_df, edges_df
+    edges_df = edges_df.sort_values(["similarity", "shared_count"], ascending=[False, False]).reset_index(drop=True)
     return nodes_df, edges_df
 
 
+def isolated_cluster_nodes(nodes_df: pd.DataFrame, edges_df: pd.DataFrame) -> pd.DataFrame:
+    """Return the cluster nodes that have no surviving edges in the network."""
+    if nodes_df.empty:
+        return nodes_df.copy()
+    if edges_df.empty:
+        return nodes_df.copy()
+    connected_clusters = set(edges_df["source_cluster"].tolist()) | set(edges_df["target_cluster"].tolist())
+    return nodes_df[~nodes_df["cluster_id"].isin(connected_clusters)].copy()
+
+
 def cluster_network_3d_figure(nodes_df: pd.DataFrame, edges_df: pd.DataFrame) -> go.Figure:
+    """Render the Plotly 3D figure for the cluster network."""
     fig = go.Figure()
 
     for edge in edges_df.itertuples(index=False):
@@ -1030,13 +1080,13 @@ def cluster_network_3d_figure(nodes_df: pd.DataFrame, edges_df: pd.DataFrame) ->
                 hovertemplate=(
                     f"Cluster {edge.source_cluster} ↔ Cluster {edge.target_cluster}<br>"
                     f"Similaridade: {edge.similarity:.3f}<br>"
-                    f"Tags em comum: {edge.shared_tags}<extra></extra>"
+                    f"Termos compartilhados: {edge.shared_terms}<extra></extra>"
                 ),
                 showlegend=False,
             )
         )
 
-    hover_custom = nodes_df[["cluster_id", "top_terms", "dominant_tags", "top_crimes", "size", "active_years"]].values
+    hover_custom = nodes_df[["cluster_id", "top_terms", "dominant_terms", "top_crimes", "size", "active_years"]].values
     fig.add_trace(
         go.Scatter3d(
             x=nodes_df["x"],
@@ -1051,7 +1101,7 @@ def cluster_network_3d_figure(nodes_df: pd.DataFrame, edges_df: pd.DataFrame) ->
                 "Tamanho: %{customdata[4]}<br>"
                 "Anos ativos: %{customdata[5]}<br>"
                 "Top terms: %{customdata[1]}<br>"
-                "Tags dominantes: %{customdata[2]}<br>"
+                "Assinatura textual: %{customdata[2]}<br>"
                 "Crimes dominantes: %{customdata[3]}<extra></extra>"
             ),
             marker={
@@ -1082,6 +1132,7 @@ def cluster_network_3d_figure(nodes_df: pd.DataFrame, edges_df: pd.DataFrame) ->
 
 
 def selected_cluster_from_network_event(event: object, nodes_df: pd.DataFrame, node_trace_index: int) -> int | None:
+    """Extract the clicked cluster id from a Plotly selection event."""
     if not event:
         return None
 
@@ -1115,6 +1166,7 @@ def selected_cluster_from_network_event(event: object, nodes_df: pd.DataFrame, n
 
 
 def classify_series_type(series_row: pd.Series) -> str:
+    """Classify a semantic series by naming pattern and content profile."""
     operation_names = str(series_row.get("operation_names", "") or "").strip()
     group_key = str(series_row.get("series_group_key", "") or "")
     if operation_names and operation_names.lower() != "nan":
@@ -1125,6 +1177,7 @@ def classify_series_type(series_row: pd.Series) -> str:
 
 
 def classify_series_strength(series_row: pd.Series) -> str:
+    """Bucket a semantic series by recurrence strength."""
     size = int(series_row.get("size", 0) or 0)
     active_years = int(series_row.get("active_years", 0) or 0)
     strength_score = size * active_years
@@ -1136,6 +1189,7 @@ def classify_series_strength(series_row: pd.Series) -> str:
 
 
 def prepare_series_catalog(series_df: pd.DataFrame) -> pd.DataFrame:
+    """Add derived metadata used to browse the semantic series catalog."""
     catalog = series_df.copy()
     catalog["series_type"] = catalog.apply(classify_series_type, axis=1)
     catalog["strength_score"] = catalog["size"].fillna(0) * catalog["active_years"].fillna(0)
@@ -1146,6 +1200,7 @@ def prepare_series_catalog(series_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def sort_series_catalog(series_df: pd.DataFrame, ranking_sort: str) -> pd.DataFrame:
+    """Sort the semantic series catalog according to the selected ranking."""
     if ranking_sort == "Força":
         return series_df.sort_values(["strength_score", "size", "active_years"], ascending=[False, False, False])
     if ranking_sort == "Tamanho":
@@ -1156,6 +1211,7 @@ def sort_series_catalog(series_df: pd.DataFrame, ranking_sort: str) -> pd.DataFr
 
 
 def series_timeline_chart(series_df: pd.DataFrame) -> alt.Chart:
+    """Build the overview timeline of semantic series."""
     top_series = series_df.head(25).copy()
     top_series["serie"] = top_series["semantic_series_id"].map(lambda x: f"Série {int(x)}")
     return (
@@ -1180,6 +1236,7 @@ def series_timeline_chart(series_df: pd.DataFrame) -> alt.Chart:
 
 
 def series_member_timeline_chart(members: pd.DataFrame) -> alt.Chart:
+    """Build the member timeline for one semantic series."""
     monthly = members.groupby("month").size().reset_index(name="noticias")
     monthly["month_dt"] = pd.to_datetime(monthly["month"])
     return (
@@ -1195,6 +1252,7 @@ def series_member_timeline_chart(members: pd.DataFrame) -> alt.Chart:
 
 
 def render_series_detail(series_row: pd.Series, members: pd.DataFrame, news_limit: int = 80) -> None:
+    """Render metrics, charts, and examples for one semantic series."""
     a, b, c, d = st.columns(4)
     a.metric("Tamanho", int(series_row["size"]))
     b.metric("Anos ativos", int(series_row["active_years"]))
@@ -1224,6 +1282,7 @@ def render_series_detail(series_row: pd.Series, members: pd.DataFrame, news_limi
 
 
 def get_markdown_excerpt(path_value: str, limit: int = 6000) -> str:
+    """Load and truncate the extracted markdown for one news item."""
     path = BASE_DIR / path_value
     if not path.exists():
         return "Conteúdo markdown não encontrado."
@@ -1232,6 +1291,7 @@ def get_markdown_excerpt(path_value: str, limit: int = 6000) -> str:
 
 
 def render_metric_row() -> None:
+    """Render the top metric row shown on the overview page."""
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("Notícias", f"{len(CORPUS):,}".replace(",", "."))
     c2.metric("Clusters", int(CORPUS["cluster_id"].nunique()))
@@ -1241,6 +1301,7 @@ def render_metric_row() -> None:
 
 
 def render_story_overview() -> None:
+    """Render the opening narrative and overview charts."""
     st.markdown(
         """
         <div class="hero">
@@ -1292,6 +1353,7 @@ def render_story_overview() -> None:
 
 
 def render_crimes_modus() -> None:
+    """Render the crimes and modus exploration section."""
     st.subheader("Crimes e Modus Operandi")
     st.markdown(
         """
@@ -1459,15 +1521,19 @@ def render_crimes_modus() -> None:
         st.info("Nao ha dados suficientes para montar o mapa do crime neste recorte.")
 
 
-def render_clusters() -> None:
+def render_clusters(neighbors_per_cluster: int, min_similarity: float) -> None:
+    """Render the cluster exploration section and its 3D network."""
     st.subheader("Clusters Semânticos")
     st.markdown(
         """
         <div class="section-note">
-            Cada cluster agrupa notícias que compartilham vocabulário, temas e contextos muito próximos. Eles são o mapa estrutural do acervo.
+            Cada cluster agrupa noticias que compartilham vocabulario, temas e contextos muito proximos. Eles sao o mapa estrutural do acervo. A proximidade entre clusters na rede 3D e calculada a partir do corpus textual agregado de cada cluster, isto e, pela uniao dos textos das noticias que pertencem a ele.
         </div>
         """,
         unsafe_allow_html=True,
+    )
+    st.caption(
+        f"Recorte atual da rede: ate {neighbors_per_cluster} vizinho(s) por cluster, com similaridade minima de {min_similarity:.2f}."
     )
     cluster_options = CLUSTERS["cluster_id"].tolist()
     selected_cluster = st.selectbox(
@@ -1492,6 +1558,7 @@ def render_clusters() -> None:
                 <p><strong>Top terms:</strong> {cluster_row['top_terms']}</p>
                 <p><strong>Crimes dominantes:</strong> {cluster_row['top_crimes']}</p>
                 <p><strong>Modus dominantes:</strong> {cluster_row['top_modus']}</p>
+                <p><strong>Como a proximidade e medida:</strong> a rede compara este cluster com os demais usando o corpus textual agregado do cluster, e nao apenas tags isoladas.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -1506,9 +1573,23 @@ def render_clusters() -> None:
         hide_index=True,
     )
 
-    network_nodes, network_edges = build_cluster_tag_network(CORPUS[["cluster_id", "tags_list"]], CLUSTERS)
+    network_nodes, network_edges = build_cluster_text_network(
+        CORPUS[["cluster_id", "texto_busca_normalizado"]],
+        CLUSTERS,
+        neighbors_per_cluster=neighbors_per_cluster,
+        min_similarity=min_similarity,
+    )
+    isolated_nodes = isolated_cluster_nodes(network_nodes, network_edges)
     st.markdown("### Rede 3D dos clusters")
-    st.caption("Cada nó é um cluster. A posição vem da projeção tridimensional das tags e as arestas ligam os vizinhos mais próximos por similaridade temática. Ao clicar em um nó, o painel abaixo tenta abrir as notícias desse cluster.")
+    st.caption("Cada no e um cluster. A posicao vem da projecao tridimensional do corpus textual agregado de cada cluster, e as arestas ligam os vizinhos mais proximos por similaridade textual entre esses corpus. Ao clicar em um no, o painel abaixo tenta abrir as noticias desse cluster.")
+    if not isolated_nodes.empty:
+        isolated_labels = [f"C{int(cluster_id)}" for cluster_id in isolated_nodes["cluster_id"].tolist()]
+        preview = ", ".join(isolated_labels[:8])
+        if len(isolated_labels) > 8:
+            preview += ", ..."
+        st.info(
+            f"Ha {len(isolated_nodes)} cluster(s) solto(s) nesta rede. Isso significa que, neste corte de similaridade e vizinhanca, eles nao formaram conexoes fortes o suficiente com outros clusters. Em geral isso acontece quando o vocabulario agregado e muito especifico, o cluster e pequeno, ou a semelhanca fica abaixo do limiar atual. Exemplos: {preview}."
+        )
     if not network_nodes.empty and not network_edges.empty:
         left, right = st.columns([1.25, 0.75])
         figure = cluster_network_3d_figure(network_nodes, network_edges)
@@ -1526,21 +1607,22 @@ def render_clusters() -> None:
                 },
             )
         with right:
+            st.info("As conexoes abaixo sao calculadas pela similaridade entre os corpus textuais agregados de cada cluster. Os termos exibidos ajudam a entender por que dois clusters ficaram proximos.")
             st.markdown("**Conexões mais fortes**")
             st.dataframe(
-                network_edges.head(12)[["source_cluster", "target_cluster", "similarity", "shared_tags"]]
+                network_edges.head(12)[["source_cluster", "target_cluster", "similarity", "shared_terms"]]
                 .rename(
                     columns={
                         "source_cluster": "Cluster A",
                         "target_cluster": "Cluster B",
                         "similarity": "Similaridade",
-                        "shared_tags": "Tags que conectam",
+                        "shared_terms": "Termos que conectam",
                     }
                 ),
                 width="stretch",
                 hide_index=True,
             )
-            st.caption("As tags genéricas da casa, como 'Operação PF', foram removidas da rede para evitar conexões artificiais.")
+            st.caption("A rede mostra apenas os vizinhos mais fortes de cada cluster e aplica um limiar minimo de similaridade. Por isso, alguns clusters podem aparecer sem arestas nesta visualizacao.")
 
         clicked_cluster = selected_cluster_from_network_event(event, network_nodes, node_trace_index)
         manual_cluster = st.selectbox(
@@ -1563,6 +1645,7 @@ def render_clusters() -> None:
 
 
 def render_series() -> None:
+    """Render the recurring semantic series section."""
     st.subheader("Séries Recorrentes")
     st.markdown(
         """
@@ -1679,6 +1762,7 @@ def render_series() -> None:
 
 
 def render_neighbors() -> None:
+    """Render the nearest-neighbor exploration section."""
     st.subheader("Vizinhança Semântica e Casos Muito Próximos")
     st.markdown(
         """
@@ -1747,6 +1831,7 @@ def render_neighbors() -> None:
 
 
 def render_artifacts() -> None:
+    """Render the artifact inventory and consolidated report."""
     st.subheader("História dos Artefatos")
     st.markdown(
         """
@@ -1782,6 +1867,28 @@ with st.sidebar:
     st.caption("4. Séries Recorrentes")
     st.caption("5. Vizinhança Semântica")
     st.caption("6. Artefatos")
+    cluster_neighbors_per_node = 3
+    cluster_min_similarity = 0.12
+    if section == "Clusters":
+        st.markdown("---")
+        st.markdown("### Parametros da Rede")
+        cluster_neighbors_per_node = st.slider(
+            "Vizinhos por cluster",
+            min_value=1,
+            max_value=8,
+            value=3,
+            step=1,
+            help="Define quantas conexoes maximas cada cluster pode manter na rede 3D.",
+        )
+        cluster_min_similarity = st.slider(
+            "Similaridade minima",
+            min_value=0.05,
+            max_value=0.60,
+            value=0.12,
+            step=0.01,
+            help="Filtra conexoes fracas. Quanto maior o valor, mais seletiva fica a rede.",
+        )
+
 
 
 if section == "Panorama":
@@ -1789,7 +1896,10 @@ if section == "Panorama":
 elif section == "Crimes e Modus":
     render_crimes_modus()
 elif section == "Clusters":
-    render_clusters()
+    render_clusters(
+        neighbors_per_cluster=cluster_neighbors_per_node,
+        min_similarity=cluster_min_similarity,
+    )
 elif section == "Séries Recorrentes":
     render_series()
 elif section == "Vizinhança Semântica":
