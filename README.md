@@ -35,6 +35,10 @@ O foco do projeto e identificar quais tipos de crimes aparecem com maior recorre
 
 ```text
 NT_PF/
+|-- .zenodo.json
+|-- CITATION.cff
+|-- DATASET_README.md
+|-- LICENSE
 |-- data/
 |   |-- analise_qualitativa/   # saidas geradas pelo pipeline
 |   |-- noticias_markdown/     # markdown de cada noticia extraida
@@ -48,6 +52,12 @@ NT_PF/
 `-- .gitignore
 ```
 
+## Reproducibilidade
+
+- Ambiente validado com Python 3.13.12.
+- As dependencias do projeto estao fixadas em [requirements.txt](requirements.txt) para facilitar a recriacao do ambiente.
+- O manifesto `data/pf_operacoes_conteudos.csv` pode registrar extracoes com falha; a etapa de analise consome apenas registros com `status=ok` e markdown realmente disponivel.
+
 ## Como executar
 
 Crie o ambiente virtual e instale as dependencias:
@@ -57,25 +67,23 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-### Etapa 1: coletar o indice estruturado
+### Etapa 1: sincronizar a base automaticamente
 
 ```powershell
-.\.venv\Scripts\python.exe .\scripts\pf_operacoes_pipeline.py collect --output-csv .\data\pf_operacoes_index.csv
+.\.venv\Scripts\python.exe .\scripts\pf_operacoes_pipeline.py sync --index-csv .\data\pf_operacoes_index.csv --content-csv .\data\pf_operacoes_conteudos.csv --markdown-dir .\data\noticias_markdown
 ```
 
-### Etapa 2: extrair o conteudo das noticias
+Esse comando atualiza o indice e baixa apenas as noticias que ainda nao existem na base local.
 
-```powershell
-.\.venv\Scripts\python.exe .\scripts\pf_operacoes_pipeline.py extract --index-csv .\data\pf_operacoes_index.csv --output-csv .\data\pf_operacoes_conteudos.csv --markdown-dir .\data\noticias_markdown --only-missing
-```
+Se quiser rodar as etapas separadamente, os comandos antigos `collect` e `extract` continuam disponiveis.
 
-### Etapa 3: gerar a analise qualitativa
+### Etapa 2: gerar a analise qualitativa
 
 ```powershell
 .\.venv\Scripts\python.exe .\scripts\pf_analise_qualitativa.py --output-dir .\data\analise_qualitativa
 ```
 
-### Etapa 4: abrir o painel
+### Etapa 3: abrir o painel
 
 ```powershell
 .\.venv\Scripts\python.exe -m streamlit run .\streamlit_app.py
@@ -88,6 +96,12 @@ python -m venv .venv
 - `data/noticias_markdown/*.md`: texto principal de cada noticia convertido para markdown.
 - `data/analise_qualitativa/`: tabelas analiticas e relatorio narrativo.
 - `streamlit_app.py`: painel para leitura exploratoria dos resultados.
+
+## Citacao e licenca
+
+- O codigo deste projeto esta licenciado sob MIT. Veja [LICENSE](LICENSE).
+- A citacao de software recomendada esta em [CITATION.cff](CITATION.cff).
+- Os metadados iniciais para integracao com Zenodo estao em [.zenodo.json](.zenodo.json).
 
 ## Partes do painel Streamlit
 
@@ -132,7 +146,16 @@ A barra lateral organiza o percurso sugerido de leitura do painel nesta ordem:
 
 Quando os arquivos gerados pelo pipeline ainda nao existem, o app nao falha. Em vez disso, ele mostra uma tela de orientacao com os comandos necessarios para reconstruir os dados localmente antes de abrir o painel completo.
 
-## Versao enxuta para GitHub
+## Publicacao no Zenodo
+
+Para uma publicacao mais limpa e reutilizavel, a recomendacao e separar dois registros:
+
+1. `Software`: codigo-fonte, README, licenca MIT, citacao e metadados do Zenodo.
+2. `Dataset`: CSVs e artefatos analiticos derivados, acompanhados de documentacao metodologica e dicionario dos arquivos.
+
+O arquivo [DATASET_README.md](DATASET_README.md) descreve os artefatos e a estrategia recomendada para esse segundo deposito.
+
+## Versao enxuta para GitHub e para o deposito de software
 
 Este repositorio foi preparado para subir ao GitHub sem levar o volume inteiro de artefatos gerados localmente. Por isso, os seguintes caminhos ficam fora do versionamento:
 
@@ -151,3 +174,4 @@ Se voce clonar o projeto e abrir o app sem gerar os dados antes, o `streamlit_ap
 - O pipeline depende de acesso a rede para consultar o portal publico da PF.
 - A primeira execucao pode demorar porque envolve raspagem, extracao textual e geracao de artefatos analiticos.
 - O repositorio foi mantido enxuto de proposito para facilitar publicacao, clonagem e manutencao no GitHub.
+- O portal de origem da PF informa licenciamento proprio para o conteudo publicado em `gov.br`; por isso, o deposito de software e o deposito de dados derivados devem ser tratados separadamente e com atribuicao explicita a fonte publica.

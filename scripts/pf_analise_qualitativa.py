@@ -314,7 +314,20 @@ def keyword_hits(text: str, patterns: dict[str, list[str]]) -> list[str]:
 def load_corpus(index_csv: Path, content_csv: Path) -> pd.DataFrame:
     index_df = pd.read_csv(index_csv)
     content_df = pd.read_csv(content_csv)
+    content_df = content_df.copy()
+    content_df["status"] = content_df["status"].fillna("")
+    content_df["markdown_path"] = content_df["markdown_path"].fillna("")
+    content_df = content_df.loc[content_df["status"].eq("ok") & content_df["markdown_path"].ne("")].copy()
+    content_df["markdown_exists"] = content_df["markdown_path"].map(lambda value: Path(value).exists())
+    missing_markdown = int((~content_df["markdown_exists"]).sum())
+    if missing_markdown:
+        print(f"[analysis] ignorando {missing_markdown} registros com markdown ausente no manifesto.")
+    content_df = content_df.loc[content_df["markdown_exists"]].drop(columns=["markdown_exists"])
+
     df = index_df.merge(content_df, on="link", how="inner", validate="one_to_one")
+    if df.empty:
+        raise ValueError("Nenhum artigo com status 'ok' e markdown disponivel foi encontrado para analise.")
+
     df["markdown_text"] = df["markdown_path"].map(read_markdown_text)
     df["texto_limpo"] = df["markdown_text"].map(strip_markdown)
     df["texto_busca"] = (

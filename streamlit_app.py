@@ -204,8 +204,7 @@ def render_missing_data_state(missing_paths: list[Path]) -> None:
             [
                 "python -m venv .venv",
                 r".\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt",
-                r".\\.venv\\Scripts\\python.exe .\\scripts\\pf_operacoes_pipeline.py collect --output-csv .\\data\\pf_operacoes_index.csv",
-                r".\\.venv\\Scripts\\python.exe .\\scripts\\pf_operacoes_pipeline.py extract --index-csv .\\data\\pf_operacoes_index.csv --output-csv .\\data\\pf_operacoes_conteudos.csv --markdown-dir .\\data\\noticias_markdown --only-missing",
+                r".\\.venv\\Scripts\\python.exe .\\scripts\\pf_operacoes_pipeline.py sync --index-csv .\\data\\pf_operacoes_index.csv --content-csv .\\data\\pf_operacoes_conteudos.csv --markdown-dir .\\data\\noticias_markdown",
                 r".\\.venv\\Scripts\\python.exe .\\scripts\\pf_analise_qualitativa.py --output-dir .\\data\\analise_qualitativa",
                 r".\\.venv\\Scripts\\python.exe -m streamlit run .\\streamlit_app.py",
             ]

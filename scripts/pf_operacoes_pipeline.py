@@ -298,6 +298,67 @@ def load_existing_manifest(content_csv: Path) -> pd.DataFrame:
     )
 
 
+def normalize_link(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    cleaned = value.strip()
+    return cleaned or None
+
+
+def prepare_index_df(df_index: pd.DataFrame) -> pd.DataFrame:
+    prepared = df_index.copy()
+    prepared["link"] = prepared["link"].map(normalize_link)
+    return prepared.dropna(subset=["link"]).drop_duplicates(subset=["link"], keep="first").reset_index(drop=True)
+
+
+def prepare_manifest_df(manifest: pd.DataFrame) -> pd.DataFrame:
+    prepared = manifest.copy()
+    prepared["link"] = prepared["link"].map(normalize_link)
+    return prepared.dropna(subset=["link"]).drop_duplicates(subset=["link"], keep="last").reset_index(drop=True)
+
+
+def build_manifest_lookup(manifest: pd.DataFrame) -> dict[str, dict[str, object]]:
+    return {
+        record["link"]: record
+        for record in manifest.to_dict(orient="records")
+        if isinstance(record.get("link"), str)
+    }
+
+
+def resolve_markdown_path(markdown_path: object, markdown_dir: Path, link: str) -> Path:
+    if isinstance(markdown_path, str) and markdown_path.strip():
+        return Path(markdown_path.strip())
+    return markdown_dir / markdown_filename(link)
+
+
+def article_already_exists(
+    link: str,
+    manifest_lookup: dict[str, dict[str, object]],
+    markdown_dir: Path,
+) -> bool:
+    existing = manifest_lookup.get(link)
+    if not existing:
+        return False
+
+    if existing.get("status") != "ok":
+        return False
+
+    markdown_path = resolve_markdown_path(existing.get("markdown_path"), markdown_dir, link)
+    return markdown_path.exists()
+
+
+def count_missing_articles(
+    df_index: pd.DataFrame,
+    manifest_lookup: dict[str, dict[str, object]],
+    markdown_dir: Path,
+) -> int:
+    missing = 0
+    for link in df_index["link"].tolist():
+        if not article_already_exists(link, manifest_lookup, markdown_dir):
+            missing += 1
+    return missing
+
+
 def extract_articles(
     session: requests.Session,
     index_csv: Path,
@@ -308,11 +369,9 @@ def extract_articles(
     limit: int | None,
     only_missing: bool,
 ) -> pd.DataFrame:
-    df_index = load_index_csv(index_csv)
-    manifest = load_existing_manifest(content_csv)
-    done_links = set()
-    if only_missing and not manifest.empty:
-        done_links = set(manifest.loc[manifest["status"] == "ok", "link"].dropna().tolist())
+    df_index = prepare_index_df(load_index_csv(index_csv))
+    manifest = prepare_manifest_df(load_existing_manifest(content_csv))
+    manifest_lookup = build_manifest_lookup(manifest)
 
     converter = DocumentConverter()
     markdown_dir.mkdir(parents=True, exist_ok=True)
@@ -321,10 +380,9 @@ def extract_articles(
     processed = 0
 
     for _, row in df_index.iterrows():
-        link = row.get("link")
-        if not isinstance(link, str) or not link.strip():
-            continue
-        if only_missing and link in done_links:
+        link = row["link"]
+        if only_missing and article_already_exists(link, manifest_lookup, markdown_dir):
+            print(f"[extract] pulando existente: {link}")
             continue
         if limit is not None and processed >= limit:
             break
@@ -349,6 +407,7 @@ def extract_articles(
                     "erro": None,
                 }
             )
+            manifest_lookup[link] = rows[-1]
         except Exception as exc:  # noqa: BLE001
             rows.append(
                 {
@@ -363,6 +422,7 @@ def extract_articles(
                     "erro": str(exc),
                 }
             )
+            manifest_lookup[link] = rows[-1]
 
         processed += 1
         updated_manifest = pd.DataFrame(rows).drop_duplicates(subset=["link"], keep="last").reset_index(drop=True)
@@ -407,6 +467,41 @@ def command_extract(args: argparse.Namespace) -> None:
     print(f"[extract] markdown dir: {args.markdown_dir.resolve()}")
 
 
+def command_sync(args: argparse.Namespace) -> None:
+    session = build_session()
+    df_index = collect_listing(
+        session=session,
+        start_offset=args.start_offset,
+        end_offset=args.end_offset,
+        step=args.step,
+        timeout=args.timeout,
+        sleep_seconds=args.sleep_seconds,
+    )
+    ensure_parent(args.index_csv)
+    df_index.to_csv(args.index_csv, index=False, encoding="utf-8-sig")
+    print(f"[sync] indice atualizado com {len(df_index)} noticias em {args.index_csv.resolve()}")
+
+    prepared_index = prepare_index_df(df_index)
+    manifest = prepare_manifest_df(load_existing_manifest(args.content_csv))
+    manifest_lookup = build_manifest_lookup(manifest)
+    missing_count = count_missing_articles(prepared_index, manifest_lookup, args.markdown_dir)
+    print(f"[sync] noticias pendentes de extracao: {missing_count}")
+
+    updated_manifest = extract_articles(
+        session=session,
+        index_csv=args.index_csv,
+        content_csv=args.content_csv,
+        markdown_dir=args.markdown_dir,
+        timeout=args.timeout,
+        sleep_seconds=args.sleep_seconds,
+        limit=args.limit,
+        only_missing=True,
+    )
+    print(f"[sync] registros no manifesto: {len(updated_manifest)}")
+    print(f"[sync] manifesto: {args.content_csv.resolve()}")
+    print(f"[sync] markdown dir: {args.markdown_dir.resolve()}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Coleta noticias de operacoes da PF e extrai o conteudo principal com docling."
@@ -434,6 +529,21 @@ def build_parser() -> argparse.ArgumentParser:
     extract_parser.add_argument("--limit", type=int, default=None)
     extract_parser.add_argument("--only-missing", action="store_true")
     extract_parser.set_defaults(func=command_extract)
+
+    sync_parser = subparsers.add_parser(
+        "sync",
+        help="Atualiza o indice e extrai automaticamente apenas as noticias faltantes.",
+    )
+    sync_parser.add_argument("--start-offset", type=int, default=0)
+    sync_parser.add_argument("--end-offset", type=int, default=None)
+    sync_parser.add_argument("--step", type=int, default=DEFAULT_STEP)
+    sync_parser.add_argument("--index-csv", type=Path, default=DEFAULT_INDEX_CSV)
+    sync_parser.add_argument("--content-csv", type=Path, default=DEFAULT_CONTENT_CSV)
+    sync_parser.add_argument("--markdown-dir", type=Path, default=DEFAULT_MARKDOWN_DIR)
+    sync_parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT)
+    sync_parser.add_argument("--sleep-seconds", type=float, default=DEFAULT_SLEEP)
+    sync_parser.add_argument("--limit", type=int, default=None)
+    sync_parser.set_defaults(func=command_sync)
 
     return parser
 
